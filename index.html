@@ -1,0 +1,324 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hexgrid Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Averia+Serif+Libre:wght@400;700&family=Source+Sans+3:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&family=Fira+Mono:wght@400;700&family=Spectral:wght@400;600&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Hexgrid Generator</h1>
+      </div>
+      <div class="header-export">
+        <div class="export-field">
+          <label for="export-filename">Filename</label>
+          <input id="export-filename" class="filename" type="text" value="hexmap.png">
+        </div>
+        <div class="export-actions">
+          <button id="save-png-bw" class="btn primary" type="button">PNG B/W</button>
+          <button id="save-png-alpha" class="btn" type="button">PNG Transparent</button>
+          <button id="save-pdf" class="btn" type="button">PDF (White Page)</button>
+        </div>
+      </div>
+      <div class="top-controls">
+        <div class="top-control">
+          <label for="page-orientation">Orientation</label>
+          <select id="page-orientation">
+            <option value="landscape" selected>Landscape</option>
+            <option value="portrait">Portrait</option>
+          </select>
+        </div>
+        <div class="top-stat">
+          <span>Hexes</span>
+          <strong id="hex-count">0</strong>
+        </div>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="controls left">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Hexes</h2>
+            <p>Geometry and spacing.</p>
+          </div>
+          <div class="control-grid">
+            <div class="control span-2">
+              <label for="hex-size">Hex size (mm)</label>
+              <div class="control-row slider-row">
+                <button class="stepper-btn" type="button" data-stepper="down" data-target="hex-size" aria-label="Decrease size">&lt;</button>
+                <input id="hex-size" type="range" min="1" max="80" step="0.5" value="16" data-output="hex-size-output" data-output-format="one">
+                <output id="hex-size-output">16.0</output>
+                <button class="stepper-btn" type="button" data-stepper="up" data-target="hex-size" aria-label="Increase size">&gt;</button>
+              </div>
+            </div>
+            <div class="control span-2">
+              <label for="hex-orientation">Orientation</label>
+              <select id="hex-orientation">
+                <option value="flat">Flat-Top</option>
+                <option value="pointy">Pointy-Top</option>
+              </select>
+            </div>
+            <div class="control span-2">
+              <label for="hex-margin">Margin (mm)</label>
+              <div class="control-row slider-row">
+                <button class="stepper-btn" type="button" data-stepper="down" data-target="hex-margin" aria-label="Decrease margin">&lt;</button>
+                <input id="hex-margin" type="range" min="0" max="12" step="0.25" value="0" data-output="hex-margin-output" data-output-format="two">
+                <output id="hex-margin-output">0.00</output>
+                <button class="stepper-btn" type="button" data-stepper="up" data-target="hex-margin" aria-label="Increase margin">&gt;</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Grid</h2>
+            <p>Hexgrid or hexflower.</p>
+          </div>
+          <div class="control-grid">
+            <div class="control">
+              <label for="map-shape">Type</label>
+              <select id="map-shape">
+                <option value="square">Hexgrid</option>
+                <option value="hexagon">Hexflower</option>
+              </select>
+            </div>
+            <div class="control">
+              <label for="map-handedness">Handedness</label>
+              <select id="map-handedness">
+                <option value="even">Even</option>
+                <option value="odd">Odd</option>
+              </select>
+            </div>
+            <div class="control span-2">
+              <label for="map-width">Width (hexes)</label>
+              <div class="control-row slider-row">
+                <button class="stepper-btn" type="button" data-stepper="down" data-target="map-width" aria-label="Decrease width">&lt;</button>
+                <input id="map-width" type="range" min="1" max="60" step="1" value="20" data-output="map-width-output" data-output-format="int">
+                <output id="map-width-output">20</output>
+                <button class="stepper-btn" type="button" data-stepper="up" data-target="map-width" aria-label="Increase width">&gt;</button>
+              </div>
+            </div>
+            <div class="control span-2">
+              <label for="map-height">Height (hexes)</label>
+              <div class="control-row slider-row">
+                <button class="stepper-btn" type="button" data-stepper="down" data-target="map-height" aria-label="Decrease height">&lt;</button>
+                <input id="map-height" type="range" min="1" max="60" step="1" value="10" data-output="map-height-output" data-output-format="int">
+                <output id="map-height-output">10</output>
+                <button class="stepper-btn" type="button" data-stepper="up" data-target="map-height" aria-label="Increase height">&gt;</button>
+              </div>
+            </div>
+            <p class="hint span-2">Hexflower forces an odd width and matches height automatically.</p>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Lines</h2>
+            <p>Stroke, dash, and tone.</p>
+          </div>
+          <div class="control-grid">
+            <div class="control span-2">
+              <label class="check">
+                <input id="line-show" type="checkbox" checked>
+                <span>Show lines</span>
+              </label>
+            </div>
+            <div class="control span-2">
+              <label for="hex-line-width">Line width (mm)</label>
+              <div class="control-row slider-row">
+                <button class="stepper-btn" type="button" data-stepper="down" data-target="hex-line-width" aria-label="Decrease line width">&lt;</button>
+                <input id="hex-line-width" type="range" min="0.05" max="3" step="0.05" value="0.3" data-output="hex-line-width-output" data-output-format="two">
+                <output id="hex-line-width-output">0.30</output>
+                <button class="stepper-btn" type="button" data-stepper="up" data-target="hex-line-width" aria-label="Increase line width">&gt;</button>
+              </div>
+            </div>
+            <div class="control">
+              <label for="hex-line-dash">Style</label>
+              <select id="hex-line-dash">
+                <option value="solid">Solid</option>
+                <option value="dashed">Dashed</option>
+                <option value="dotted">Dotted</option>
+              </select>
+            </div>
+            <div class="control">
+              <label for="hex-line-color">Color</label>
+              <input id="hex-line-color" type="color" value="#000000">
+            </div>
+            <div class="control span-2">
+              <label for="hex-line-alpha">Transparency</label>
+              <div class="control-row slider-row">
+                <button class="stepper-btn" type="button" data-stepper="down" data-target="hex-line-alpha" aria-label="Decrease line transparency">&lt;</button>
+                <input id="hex-line-alpha" type="range" min="0" max="1" step="0.05" value="0.5" data-output="line-alpha-value">
+                <output id="line-alpha-value">0.50</output>
+                <button class="stepper-btn" type="button" data-stepper="up" data-target="hex-line-alpha" aria-label="Increase line transparency">&gt;</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <section class="a4-zone">
+        <div class="a4-wrapper">
+          <div class="a4-paper">
+            <canvas id="hex-canvas" width="900" height="700"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <aside class="controls right">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Coordinates</h2>
+            <p>Labels, typography, and position.</p>
+          </div>
+          <div class="control-grid">
+            <div class="control span-2">
+              <label class="check">
+                <input id="coords-show" type="checkbox" checked>
+                <span>Show coordinates</span>
+              </label>
+            </div>
+            <div class="control">
+              <label for="coords-style">Style</label>
+              <select id="coords-style">
+                <option value="xy">X and Y</option>
+                <option value="index">Index</option>
+              </select>
+            </div>
+            <div class="control">
+              <label for="coords-position">Position</label>
+              <select id="coords-position">
+                <option value="top">Top</option>
+                <option value="middle">Middle</option>
+                <option value="bottom">Bottom</option>
+              </select>
+            </div>
+            <div class="control span-2">
+              <label for="coords-offset">Offset (mm)</label>
+              <div class="control-row slider-row">
+                <button class="stepper-btn" type="button" data-stepper="down" data-target="coords-offset" aria-label="Decrease offset">&lt;</button>
+                <input id="coords-offset" type="range" min="0" max="12" step="0.25" value="1" data-output="coords-offset-output" data-output-format="two">
+                <output id="coords-offset-output">1.00</output>
+                <button class="stepper-btn" type="button" data-stepper="up" data-target="coords-offset" aria-label="Increase offset">&gt;</button>
+              </div>
+            </div>
+            <div class="control span-2">
+              <label for="coords-font">Font</label>
+              <select id="coords-font" class="font-select">
+                <option value="Averia Serif Libre" style="font-family: 'Averia Serif Libre', serif;">Averia Serif Libre — A1 23 45</option>
+                <option value="Source Sans 3" style="font-family: 'Source Sans 3', sans-serif;">Source Sans 3 — A1 23 45</option>
+                <option value="JetBrains Mono" style="font-family: 'JetBrains Mono', monospace;" selected>JetBrains Mono — A1 23 45</option>
+                <option value="Fira Mono" style="font-family: 'Fira Mono', monospace;">Fira Mono — A1 23 45</option>
+                <option value="Spectral" style="font-family: 'Spectral', serif;">Spectral — A1 23 45</option>
+                <option value="Playfair Display" style="font-family: 'Playfair Display', serif;">Playfair Display — A1 23 45</option>
+                <option value="serif" style="font-family: serif;">Serif — A1 23 45</option>
+                <option value="sans-serif" style="font-family: sans-serif;">Sans Serif — A1 23 45</option>
+                <option value="monospace" style="font-family: monospace;">Monospace — A1 23 45</option>
+              </select>
+            </div>
+            <div class="control span-2">
+              <label for="coords-size">Size (mm)</label>
+              <div class="control-row slider-row">
+                <button class="stepper-btn" type="button" data-stepper="down" data-target="coords-size" aria-label="Decrease size">&lt;</button>
+                <input id="coords-size" type="range" min="0.25" max="18" step="0.25" value="2.5" data-output="coords-size-output" data-output-format="two">
+                <output id="coords-size-output">2.50</output>
+                <button class="stepper-btn" type="button" data-stepper="up" data-target="coords-size" aria-label="Increase size">&gt;</button>
+              </div>
+            </div>
+            <div class="control">
+              <label class="check">
+                <input id="coords-bold" type="checkbox">
+                <span>Bold</span>
+              </label>
+            </div>
+            <div class="control">
+              <label class="check">
+                <input id="coords-italic" type="checkbox">
+                <span>Italic</span>
+              </label>
+            </div>
+            <div class="control">
+              <label for="coords-color">Color</label>
+              <input id="coords-color" type="color" value="#4c63ff">
+            </div>
+            <div class="control span-2">
+              <label for="coords-alpha">Transparency</label>
+              <div class="control-row slider-row">
+                <button class="stepper-btn" type="button" data-stepper="down" data-target="coords-alpha" aria-label="Decrease transparency">&lt;</button>
+                <input id="coords-alpha" type="range" min="0" max="1" step="0.05" value="0.5" data-output="coords-alpha-value">
+                <output id="coords-alpha-value">0.50</output>
+                <button class="stepper-btn" type="button" data-stepper="up" data-target="coords-alpha" aria-label="Increase transparency">&gt;</button>
+              </div>
+            </div>
+            <div class="control">
+              <label for="coords-prefix">Prefix</label>
+              <input id="coords-prefix" type="text" value="">
+            </div>
+            <div class="control">
+              <label for="coords-delimiter">Delimiter</label>
+              <input id="coords-delimiter" type="text" value="-">
+            </div>
+          </div>
+
+          <div class="subpanel-grid">
+            <fieldset class="subpanel">
+              <legend>X-Coordinate</legend>
+              <div class="control-grid">
+                <div class="control span-2">
+                  <label for="coords-x-type">Type</label>
+                  <select id="coords-x-type">
+                    <option value="number">Number</option>
+                    <option value="letter-upper-case">Letter (Upper Case)</option>
+                    <option value="letter-lower-case">Letter (Lower Case)</option>
+                  </select>
+                </div>
+                <div class="control">
+                  <label for="coords-x-start">Start At</label>
+                  <input id="coords-x-start" type="number" value="1">
+                </div>
+                <div class="control">
+                  <label for="coords-x-padding">Padding</label>
+                  <input id="coords-x-padding" type="text" value="00">
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset id="coords-y" class="subpanel">
+              <legend>Y-Coordinate</legend>
+              <div class="control-grid">
+                <div class="control span-2">
+                  <label for="coords-y-type">Type</label>
+                  <select id="coords-y-type">
+                    <option value="number">Number</option>
+                    <option value="letter-upper-case">Letter (Upper Case)</option>
+                    <option value="letter-lower-case">Letter (Lower Case)</option>
+                  </select>
+                </div>
+                <div class="control">
+                  <label for="coords-y-start">Start At</label>
+                  <input id="coords-y-start" type="number" value="1">
+                </div>
+                <div class="control">
+                  <label for="coords-y-padding">Padding</label>
+                  <input id="coords-y-padding" type="text" value="00">
+                </div>
+              </div>
+            </fieldset>
+          </div>
+        </section>
+
+      </aside>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
