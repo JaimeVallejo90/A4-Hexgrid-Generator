@@ -66,15 +66,28 @@ bindInput('coordsYPadding', 'coords-y-padding');
 
 onChange();
 
-elements.savePngBw?.addEventListener('click', () => exportPng({ mode: 'bw' }));
+elements.savePngBw?.addEventListener('click', () => exportPng({ mode: 'white' }));
 elements.savePngAlpha?.addEventListener('click', () => exportPng({ mode: 'alpha' }));
 elements.savePdf?.addEventListener('click', exportPdf);
 bindSteppers();
+refreshAfterFontsLoad();
 window.addEventListener('resize', () => {
   resizeA4Paper();
   drawHexes();
   runLayoutTests();
 });
+
+function refreshAfterFontsLoad() {
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      drawHexes();
+    });
+  } else {
+    setTimeout(() => {
+      drawHexes();
+    }, 300);
+  }
+}
 
 function bindInput(key, elementId, defaultValue = 1) {
   const elem = document.getElementById(elementId);
@@ -802,7 +815,7 @@ function exportPng(options) {
 }
 
 function exportPdf() {
-  const { canvas: exportCanvas } = renderExportCanvas('color');
+  const { canvas: exportCanvas } = renderExportCanvas('white');
   const dataUrl = exportCanvas.toDataURL('image/png', 1.0);
   const filename = buildFilename('pdf');
   const orientation = state.pageOrientation === 'portrait' ? 'portrait' : 'landscape';
@@ -856,16 +869,10 @@ function renderExportCanvas(mode) {
   const overrides = {};
   let background = null;
 
-  if (mode === 'bw') {
-    overrides.hexLineColor = '#000000';
-    overrides.coordsColor = '#000000';
-    overrides.hexLineAlpha = 1;
-    overrides.coordsAlpha = 1;
+  if (mode === 'white') {
     background = '#ffffff';
   } else if (mode === 'alpha') {
     background = null;
-  } else if (mode === 'color') {
-    background = '#ffffff';
   }
 
   Object.assign(state, overrides);
