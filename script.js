@@ -2,7 +2,6 @@
 
 const HEX_X = Math.cos(Math.PI / 3);
 const HEX_Y = Math.sin(Math.PI / 3);
-const A4_ASPECT = 1.41421356237;
 const A4_MM = { width: 210, height: 297 };
 const MM_PER_INCH = 25.4;
 const EXPORT_DPI = 300;
@@ -14,23 +13,31 @@ const elements = {
   mapHandedness: document.getElementById('map-handedness'),
   mapWidth: document.getElementById('map-width'),
   mapHeight: document.getElementById('map-height'),
+  controlMapHandedness: document.getElementById('control-map-handedness'),
+  controlMapHeight: document.getElementById('control-map-height'),
   coordsY: document.getElementById('coords-y'),
   coordsDelimiter: document.getElementById('coords-delimiter'),
+  controlCoordsDelimiter: document.getElementById('control-coords-delimiter'),
+  coordsIndexStart: document.getElementById('coords-index-start'),
+  controlCoordsIndexStart: document.getElementById('control-coords-index-start'),
+  coordsIndexBase: document.getElementById('coords-index-base'),
+  controlCoordsIndexBase: document.getElementById('control-coords-index-base'),
+  coordsOrigin: document.getElementById('coords-origin'),
+  controlCoordsOrigin: document.getElementById('control-coords-origin'),
   pageOrientation: document.getElementById('page-orientation'),
   a4Wrapper: document.querySelector('.a4-wrapper'),
   a4Paper: document.querySelector('.a4-paper'),
+  workspace: document.querySelector('.workspace'),
   savePngBw: document.getElementById('save-png-bw'),
   savePngAlpha: document.getElementById('save-png-alpha'),
   savePdf: document.getElementById('save-pdf'),
   exportFilename: document.getElementById('export-filename'),
-  hexCount: document.getElementById('hex-count'),
 };
 
 const state = {};
 
 bindInput('hexSize', 'hex-size');
 bindInput('hexOrientation', 'hex-orientation');
-bindInput('hexMargin', 'hex-margin');
 
 bindInput('lineShow', 'line-show');
 bindInput('hexLineWidth', 'hex-line-width');
@@ -47,6 +54,9 @@ bindInput('pageOrientation', 'page-orientation', 'landscape');
 
 bindInput('coordsShow', 'coords-show');
 bindInput('coordsStyle', 'coords-style');
+bindInput('coordsOrigin', 'coords-origin', 'top');
+bindInput('coordsIndexStart', 'coords-index-start', '0');
+bindInput('coordsIndexBase', 'coords-index-base', '0');
 bindInput('coordsPosition', 'coords-position');
 bindInput('coordsOffset', 'coords-offset');
 bindInput('coordsFont', 'coords-font');
@@ -71,20 +81,38 @@ elements.savePngAlpha?.addEventListener('click', () => exportPng({ mode: 'alpha'
 elements.savePdf?.addEventListener('click', exportPdf);
 bindSteppers();
 refreshAfterFontsLoad();
-window.addEventListener('resize', () => {
+wireViewportRefresh();
+
+function refreshLayout() {
   resizeA4Paper();
   drawHexes();
   runLayoutTests();
-});
+}
+
+function wireViewportRefresh() {
+  window.addEventListener('resize', refreshLayout);
+
+  if ('ResizeObserver' in window) {
+    const observer = new ResizeObserver(() => {
+      refreshLayout();
+    });
+    if (elements.a4Wrapper) {
+      observer.observe(elements.a4Wrapper);
+    }
+    if (elements.workspace) {
+      observer.observe(elements.workspace);
+    }
+  }
+}
 
 function refreshAfterFontsLoad() {
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => {
-      drawHexes();
+      refreshLayout();
     });
   } else {
     setTimeout(() => {
-      drawHexes();
+      refreshLayout();
     }, 300);
   }
 }
@@ -96,6 +124,7 @@ function bindInput(key, elementId, defaultValue = 1) {
   }
 
   const readValue = () => {
+    const previousValue = state[key];
     let value = elem.value;
 
     if (elem.type === 'number' || elem.type === 'range') {
@@ -108,6 +137,9 @@ function bindInput(key, elementId, defaultValue = 1) {
     }
 
     state[key] = value;
+    if (key === 'mapWidth' && Number.isFinite(previousValue)) {
+      state.mapWidthPrev = previousValue;
+    }
 
     const outputId = elem.dataset.output;
     if (outputId) {
@@ -146,6 +178,15 @@ function updateOutputForElement(elem, value) {
   output.textContent = formatOutputValue(numericValue, format);
 }
 
+function getInputLimit(element, attr, fallback) {
+  if (!element) {
+    return fallback;
+  }
+  const raw = element.getAttribute(attr);
+  const value = raw === null ? fallback : parseFloat(raw);
+  return Number.isNaN(value) ? fallback : value;
+}
+
 function bindSteppers() {
   const buttons = document.querySelectorAll('.stepper-btn');
   buttons.forEach((button) => {
@@ -173,17 +214,97 @@ function toggleStepper(targetId, disabled) {
   });
 }
 
+function setHidden(element, hidden) {
+  if (!element) {
+    return;
+  }
+  element.classList.toggle('is-hidden', hidden);
+}
+
+function updateIndexStartLabels() {
+  if (!elements.coordsIndexStart) {
+    return;
+  }
+
+  const labelsFlat = ['N (↑)', 'NE (↗)', 'SE (↘)', 'S (↓)', 'SW (↙)', 'NW (↖)'];
+  const anglesFlat = [-90, -30, 30, 90, 150, -150];
+  const labelsPointy = ['W (←)', 'NW (↖)', 'NE (↗)', 'E (→)', 'SE (↘)', 'SW (↙)'];
+  const anglesPointy = [180, -120, -60, 0, 60, 120];
+
+  const labels = state.hexOrientation === 'pointy' ? labelsPointy : labelsFlat;
+  const targetAngles = state.hexOrientation === 'pointy' ? anglesPointy : anglesFlat;
+  const options = Array.from(elements.coordsIndexStart.options);
+
+  const ringAngles = {};
+  if (state.mapShape === 'hexagon' && getMapWidth() >= 3) {
+    const center = (getMapWidth() - 1) / 2;
+    const centerPos = getHexCenter(center, center);
+
+    for (let x = 0; x < getMapWidth(); x += 1) {
+      for (let y = 0; y < getMapHeight(); y += 1) {
+        const ri = hexagonRankIndex(x, y);
+        if (ri.rank !== 1) {
+          continue;
+        }
+        const pos = getHexCenter(x, y);
+        const angle = Math.atan2(pos.y - centerPos.y, pos.x - centerPos.x) * (180 / Math.PI);
+        ringAngles[ri.index] = angle;
+      }
+    }
+  }
+
+  options.forEach((option, index) => {
+    const ringIndex = index + 1;
+    const angle = ringAngles[ringIndex];
+    if (Number.isFinite(angle)) {
+      let bestIndex = 0;
+      let bestDiff = Infinity;
+      targetAngles.forEach((target, targetIndex) => {
+        let diff = Math.abs(angle - target);
+        if (diff > 180) {
+          diff = 360 - diff;
+        }
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestIndex = targetIndex;
+        }
+      });
+      option.textContent = labels[bestIndex];
+    } else {
+      option.textContent = labels[index] || `Position ${index + 1}`;
+    }
+  });
+}
+
 function onChange() {
   updateA4Orientation();
-  resizeA4Paper();
 
   if (state.mapShape === 'hexagon') {
     elements.mapHandedness.disabled = true;
     elements.mapHeight.disabled = true;
     toggleStepper('map-height', true);
+    setHidden(elements.controlMapHandedness, true);
+    setHidden(elements.controlMapHeight, true);
 
     if (state.mapWidth % 2 === 0) {
-      const enforcedWidth = Math.max(1, state.mapWidth - 1);
+      const widthMin = getInputLimit(elements.mapWidth, 'min', 1);
+      const widthMax = getInputLimit(elements.mapWidth, 'max', state.mapWidth);
+      let enforcedWidth = state.mapWidth;
+
+      if (Number.isFinite(state.mapWidthPrev) && state.mapWidth < state.mapWidthPrev) {
+        if (state.mapWidth - 1 >= widthMin) {
+          enforcedWidth = state.mapWidth - 1;
+        } else if (state.mapWidth + 1 <= widthMax) {
+          enforcedWidth = state.mapWidth + 1;
+        }
+      } else if (state.mapWidth + 1 <= widthMax) {
+        enforcedWidth = state.mapWidth + 1;
+      } else if (state.mapWidth - 1 >= widthMin) {
+        enforcedWidth = state.mapWidth - 1;
+      }
+
+      enforcedWidth = Math.min(widthMax, Math.max(widthMin, enforcedWidth));
+
       if (enforcedWidth !== state.mapWidth) {
         state.mapWidth = enforcedWidth;
         elements.mapWidth.value = enforcedWidth;
@@ -201,18 +322,19 @@ function onChange() {
     elements.mapHandedness.disabled = false;
     elements.mapHeight.disabled = false;
     toggleStepper('map-height', false);
+    setHidden(elements.controlMapHandedness, false);
+    setHidden(elements.controlMapHeight, false);
   }
 
-  if (state.coordsStyle === 'index') {
-    elements.coordsY.disabled = true;
-    elements.coordsDelimiter.disabled = true;
-  } else {
-    elements.coordsY.disabled = false;
-    elements.coordsDelimiter.disabled = false;
-  }
+  const isIndex = state.coordsStyle === 'index';
+  setHidden(elements.coordsY, isIndex);
+  setHidden(elements.controlCoordsDelimiter, isIndex);
+  setHidden(elements.controlCoordsIndexStart, !(isIndex && state.mapShape === 'hexagon'));
+  setHidden(elements.controlCoordsIndexBase, !(isIndex && state.mapShape === 'hexagon'));
+  setHidden(elements.controlCoordsOrigin, state.mapShape === 'hexagon');
+  updateIndexStartLabels();
 
-  drawHexes();
-  runLayoutTests();
+  refreshLayout();
 }
 
 function updateA4Orientation() {
@@ -243,22 +365,21 @@ function resizeA4Paper() {
     return;
   }
 
-  const orientation = state.pageOrientation === 'portrait' ? 'portrait' : 'landscape';
-  const aspect = orientation === 'portrait' ? 1 / A4_ASPECT : A4_ASPECT;
-  const availableWidth = wrapperWidth * 0.95;
-  const availableHeight = wrapperHeight * 0.95;
+  const page = getPageSizeMm();
+  const aspect = page.width / page.height;
 
-  let width = availableWidth;
+  let width = wrapperWidth;
   let height = width / aspect;
 
-  if (height > availableHeight) {
-    height = availableHeight;
+  if (height > wrapperHeight) {
+    height = wrapperHeight;
     width = height * aspect;
   }
 
   elements.a4Paper.style.width = `${Math.floor(width)}px`;
   elements.a4Paper.style.height = `${Math.floor(height)}px`;
 }
+
 
 function resizePreviewCanvas() {
   if (!elements.a4Paper) {
@@ -278,40 +399,58 @@ function resizePreviewCanvas() {
 function runLayoutTests() {
   const rows = document.querySelectorAll('.control-row');
   let issues = 0;
+  const tolerance = 4;
+  const details = [];
 
   rows.forEach((row) => {
-    const overflow = row.scrollWidth > row.clientWidth + 3;
+    const overflow = row.scrollWidth > row.clientWidth + tolerance;
     row.classList.toggle('layout-overflow', overflow);
     if (overflow) {
       issues += 1;
+      const control = row.closest('.control');
+      const label = control?.querySelector('label');
+      const input = row.querySelector('input, select, output');
+      const target = input?.id || row.dataset?.target || row.className;
+      const labelText = label ? label.textContent.trim() : '';
+      details.push(
+        `Row overflow: ${labelText || target} (scroll ${row.scrollWidth}px > client ${row.clientWidth}px)`
+      );
     }
   });
 
   if (elements.a4Wrapper && elements.a4Paper) {
-    const paperOverflow = elements.a4Paper.offsetWidth > elements.a4Wrapper.clientWidth + 1
-      || elements.a4Paper.offsetHeight > elements.a4Wrapper.clientHeight + 1;
+    const paperOverflow = elements.a4Paper.offsetWidth > elements.a4Wrapper.clientWidth + tolerance
+      || elements.a4Paper.offsetHeight > elements.a4Wrapper.clientHeight + tolerance;
     elements.a4Paper.classList.toggle('layout-overflow', paperOverflow);
     if (paperOverflow) {
       issues += 1;
+      details.push(
+        `Paper overflow: paper ${elements.a4Paper.offsetWidth}x${elements.a4Paper.offsetHeight}px > wrapper ${elements.a4Wrapper.clientWidth}x${elements.a4Wrapper.clientHeight}px`
+      );
     }
   }
 
-  const docOverflow = document.documentElement.scrollWidth > window.innerWidth + 1
-    || document.documentElement.scrollHeight > window.innerHeight + 1;
+  const docClientWidth = document.documentElement.clientWidth;
+  const docClientHeight = document.documentElement.clientHeight;
+  const docOverflow = document.documentElement.scrollWidth > docClientWidth + tolerance
+    || document.documentElement.scrollHeight > docClientHeight + tolerance;
 
   if (docOverflow) {
     issues += 1;
+    details.push(
+      `Document overflow: scroll ${document.documentElement.scrollWidth}x${document.documentElement.scrollHeight}px > client ${docClientWidth}x${docClientHeight}px`
+    );
   }
 
   if (issues > 0) {
     console.warn(`Layout test: ${issues} overflow issue(s) detected.`);
+    details.forEach((detail) => console.warn(detail));
   }
 }
 
 function drawHexes() {
   resizePreviewCanvas();
   drawHexesOn(ctx, canvas, null, getPageSizeMm());
-  updateMeta();
 }
 
 function drawHexesOn(context, targetCanvas, backgroundColor, pageMm) {
@@ -380,12 +519,8 @@ function drawLines(context) {
       context.translate(coords.x, coords.y);
       context.beginPath();
 
-      if (state.hexMargin !== 0) {
-        drawHex(context, getHexRadius() - state.hexMargin / 2);
-      } else {
-        drawPartialHex(context, getHexRadius(), x, y);
-        drawHexBorder(context, getHexRadius(), x, y);
-      }
+      drawPartialHex(context, getHexRadius(), x, y);
+      drawHexBorder(context, getHexRadius(), x, y);
 
       context.stroke();
       context.restore();
@@ -421,24 +556,42 @@ function drawCoordinates(context) {
   context.fillStyle = state.coordsColor;
   context.globalAlpha = state.coordsAlpha;
 
-  for (let x = 0; x < getMapWidth(); x += 1) {
-    for (let y = 0; y < getMapHeight(); y += 1) {
+  const mapWidth = getMapWidth();
+  const mapHeight = getMapHeight();
+  const flipGridY = state.mapShape === 'square' && state.coordsOrigin === 'bottom';
+
+  for (let x = 0; x < mapWidth; x += 1) {
+    for (let y = 0; y < mapHeight; y += 1) {
       if (!hexExists({ x, y })) {
         continue;
       }
 
       const coords = getHexCenter(x, y);
       let hexString = '';
+      const displayY = flipGridY ? mapHeight - 1 - y : y;
 
       if (state.coordsStyle === 'xy') {
-        hexString = state.coordsPrefix + processXCoord(x) + state.coordsDelimiter + processYCoord(y);
+        hexString = state.coordsPrefix + processXCoord(x) + state.coordsDelimiter + processYCoord(displayY);
       } else if (state.coordsStyle === 'index') {
+        const baseOffset = Math.max(0, Math.min(1, parseInt(state.coordsIndexBase, 10) || 0));
         if (state.mapShape === 'square') {
-          const index = y * state.mapWidth + x;
-          hexString = state.coordsPrefix + processXCoord(index);
+          const index = displayY * mapWidth + x + baseOffset;
+          hexString = state.coordsPrefix + processIndexCoord(index);
         } else {
           const ri = hexagonRankIndex(x, y);
-          hexString = state.coordsPrefix + processXCoord(ri.index);
+          let index = ri.index;
+          const rotation = parseInt(state.coordsIndexStart, 10) || 0;
+          if (rotation !== 0 && ri.rank > 0) {
+            const ringStart = 1 + 3 * ri.rank * (ri.rank - 1);
+            const ringSize = 6 * ri.rank;
+            const offset = index - ringStart;
+            let rotatedOffset = (offset - rotation * ri.rank) % ringSize;
+            if (rotatedOffset < 0) {
+              rotatedOffset += ringSize;
+            }
+            index = ringStart + rotatedOffset;
+          }
+          hexString = state.coordsPrefix + processIndexCoord(index + baseOffset);
         }
       }
 
@@ -733,7 +886,7 @@ function isInHexagon(x, y) {
 }
 
 function getBaseTextY() {
-  return -getHexRadius() * HEX_Y + state.hexMargin / 2 + state.hexLineWidth / 2 + state.coordsOffset;
+  return -getHexRadius() * HEX_Y + state.hexLineWidth / 2 + state.coordsOffset;
 }
 
 function getHexRadius() {
@@ -778,6 +931,21 @@ function letterize(value) {
 function processXCoord(x) {
   let res = '';
   let value = x + state.coordsXStart;
+
+  if (state.coordsXType === 'number') {
+    res = value.toString();
+  } else if (state.coordsXType === 'letter-upper-case') {
+    res = letterize(value);
+  } else if (state.coordsXType === 'letter-lower-case') {
+    res = letterize(value).toLowerCase();
+  }
+
+  res = res.padStart(state.coordsXPadding.length, state.coordsXPadding);
+  return res;
+}
+
+function processIndexCoord(value) {
+  let res = '';
 
   if (state.coordsXType === 'number') {
     res = value.toString();
@@ -895,24 +1063,4 @@ function buildFilename(extension) {
   const raw = elements.exportFilename.value.trim() || 'hexmap.png';
   const base = raw.replace(/\.[^/.]+$/, '');
   return `${base}.${extension}`;
-}
-
-function updateMeta() {
-  if (elements.hexCount) {
-    elements.hexCount.textContent = countHexes().toString();
-  }
-}
-
-function countHexes() {
-  let total = 0;
-
-  for (let x = 0; x < getMapWidth(); x += 1) {
-    for (let y = 0; y < getMapHeight(); y += 1) {
-      if (hexExists({ x, y })) {
-        total += 1;
-      }
-    }
-  }
-
-  return total;
 }
