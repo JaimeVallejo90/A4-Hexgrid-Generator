@@ -552,3 +552,104 @@ fieldset:disabled {
 .is-hidden {
   display: none !important;
 }
+
+@media (max-height: 1200px) {
+  :root {
+    --panel-width: clamp(210px, 17vw, 320px);
+  }
+
+  .workspace {
+    padding: 2px 3px 4px;
+  }
+
+  .controls {
+    gap: 8px;
+  }
+
+  .panel {
+    padding: 7px 7px 8px;
+  }
+
+  .panel-header {
+    margin-bottom: 4px;
+  }
+
+  .panel-header p {
+    display: none;
+  }
+
+  .control-grid {
+    gap: 4px;
+  }
+
+  .control {
+    gap: 4px;
+    font-size: 0.8rem;
+  }
+
+  .control label {
+    font-size: 0.72rem;
+  }
+
+  input,
+  select,
+  output {
+    padding: 5px 8px;
+  }
+
+  input[type="number"],
+  input[type="text"],
+  input[type="search"],
+  select {
+    height: 32px;
+    font-size: 0.88rem;
+  }
+
+  input[type="color"] {
+    height: 32px;
+  }
+
+  .control-row.slider-row {
+    grid-template-columns: 22px minmax(46px, 68px) 22px;
+    column-gap: 8px;
+    row-gap: 4px;
+  }
+
+  .control-row.slider-row output {
+    height: 24px;
+    font-size: 0.8rem;
+  }
+
+  .stepper-btn {
+    width: 22px;
+    height: 22px;
+    font-size: 0.78rem;
+  }
+
+  .subpanel-grid {
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .subpanel {
+    padding: 6px 6px 8px;
+  }
+
+  .subpanel legend {
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-height: 980px) {
+  :root {
+    --panel-width: clamp(180px, 15.5vw, 260px);
+  }
+
+  .workspace {
+    padding: 1px 2px 3px;
+  }
+
+  .controls {
+    gap: 6px;
+  }
+}

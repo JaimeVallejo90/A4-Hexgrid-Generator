@@ -84,9 +84,32 @@ refreshAfterFontsLoad();
 wireViewportRefresh();
 
 function refreshLayout() {
+  fitControlColumns();
   resizeA4Paper();
   drawHexes();
   runLayoutTests();
+}
+
+function fitControlColumns() {
+  const columns = document.querySelectorAll('.controls');
+  columns.forEach((column) => {
+    column.style.zoom = '1';
+  });
+
+  columns.forEach((column) => {
+    const available = column.clientHeight;
+    const needed = column.scrollHeight;
+    if (available <= 0 || needed <= 0) {
+      return;
+    }
+
+    const scale = Math.min(1, available / needed);
+    const rounded = Math.round(scale * 1000) / 1000;
+    const nextValue = rounded >= 0.999 ? '1' : rounded.toString();
+    if (column.style.zoom !== nextValue) {
+      column.style.zoom = nextValue;
+    }
+  });
 }
 
 function wireViewportRefresh() {
