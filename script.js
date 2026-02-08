@@ -20,8 +20,6 @@ const elements = {
   controlCoordsDelimiter: document.getElementById('control-coords-delimiter'),
   coordsIndexStart: document.getElementById('coords-index-start'),
   controlCoordsIndexStart: document.getElementById('control-coords-index-start'),
-  coordsIndexBase: document.getElementById('coords-index-base'),
-  controlCoordsIndexBase: document.getElementById('control-coords-index-base'),
   coordsOrigin: document.getElementById('coords-origin'),
   controlCoordsOrigin: document.getElementById('control-coords-origin'),
   pageOrientation: document.getElementById('page-orientation'),
@@ -31,10 +29,59 @@ const elements = {
   savePngBw: document.getElementById('save-png-bw'),
   savePngAlpha: document.getElementById('save-png-alpha'),
   savePdf: document.getElementById('save-pdf'),
+  copyShareLink: document.getElementById('copy-share-link'),
   exportFilename: document.getElementById('export-filename'),
+  presetSelect: document.getElementById('preset-select'),
+  applyPreset: document.getElementById('apply-preset'),
+  resetAll: document.getElementById('reset-all'),
+};
+
+const STORAGE_KEY = 'a4-hexgrid-config';
+const URL_SEED_KEY = 'seed';
+const URL_CONFIG_KEY = 'cfg';
+const PERSISTED_FIELDS = {
+  hexSize: 'hex-size',
+  hexOrientation: 'hex-orientation',
+  lineShow: 'line-show',
+  hexLineWidth: 'hex-line-width',
+  hexLineDash: 'hex-line-dash',
+  hexLineColor: 'hex-line-color',
+  hexLineAlpha: 'hex-line-alpha',
+  mapShape: 'map-shape',
+  mapHandedness: 'map-handedness',
+  mapWidth: 'map-width',
+  mapHeight: 'map-height',
+  pageOrientation: 'page-orientation',
+  coordsShow: 'coords-show',
+  coordsStyle: 'coords-style',
+  coordsOrigin: 'coords-origin',
+  coordsIndexStart: 'coords-index-start',
+  coordsPosition: 'coords-position',
+  coordsOffset: 'coords-offset',
+  coordsFont: 'coords-font',
+  coordsSize: 'coords-size',
+  coordsBold: 'coords-bold',
+  coordsItalic: 'coords-italic',
+  coordsColor: 'coords-color',
+  coordsAlpha: 'coords-alpha',
+  coordsPrefix: 'coords-prefix',
+  coordsXType: 'coords-x-type',
+  coordsXStart: 'coords-x-start',
+  coordsXPadding: 'coords-x-padding',
+  coordsDelimiter: 'coords-delimiter',
+  coordsYType: 'coords-y-type',
+  coordsYStart: 'coords-y-start',
+  coordsYPadding: 'coords-y-padding',
 };
 
 const state = {};
+const DEFAULT_CONFIG = captureConfigFromDom();
+let persistTimer = null;
+
+applyInitialConfig();
+if (elements.presetSelect) {
+  elements.presetSelect.value = 'default';
+}
 
 bindInput('hexSize', 'hex-size');
 bindInput('hexOrientation', 'hex-orientation');
@@ -56,7 +103,6 @@ bindInput('coordsShow', 'coords-show');
 bindInput('coordsStyle', 'coords-style');
 bindInput('coordsOrigin', 'coords-origin', 'top');
 bindInput('coordsIndexStart', 'coords-index-start', '0');
-bindInput('coordsIndexBase', 'coords-index-base', '0');
 bindInput('coordsPosition', 'coords-position');
 bindInput('coordsOffset', 'coords-offset');
 bindInput('coordsFont', 'coords-font');
@@ -79,7 +125,19 @@ onChange();
 elements.savePngBw?.addEventListener('click', () => exportPng({ mode: 'white' }));
 elements.savePngAlpha?.addEventListener('click', () => exportPng({ mode: 'alpha' }));
 elements.savePdf?.addEventListener('click', exportPdf);
+elements.copyShareLink?.addEventListener('click', copyShareLinkToClipboard);
+elements.applyPreset?.addEventListener('click', () => {
+  const preset = elements.presetSelect?.value || 'default';
+  applyConfigToDom(getPresetConfig(preset), true);
+});
+elements.resetAll?.addEventListener('click', () => {
+  if (elements.presetSelect) {
+    elements.presetSelect.value = 'default';
+  }
+  applyConfigToDom({ ...DEFAULT_CONFIG }, true);
+});
 bindSteppers();
+bindPanelToggles();
 refreshAfterFontsLoad();
 wireViewportRefresh();
 
@@ -93,22 +151,44 @@ function refreshLayout() {
 function fitControlColumns() {
   const columns = document.querySelectorAll('.controls');
   columns.forEach((column) => {
-    column.style.zoom = '1';
+    if (column.style.zoom !== '1') {
+      column.style.zoom = '1';
+    }
   });
+}
 
-  columns.forEach((column) => {
-    const available = column.clientHeight;
-    const needed = column.scrollHeight;
-    if (available <= 0 || needed <= 0) {
+function bindPanelToggles() {
+  const headers = document.querySelectorAll('.panel .panel-header');
+  headers.forEach((header) => {
+    const panel = header.closest('.panel');
+    if (!panel) {
       return;
     }
 
-    const scale = Math.min(1, available / needed);
-    const rounded = Math.round(scale * 1000) / 1000;
-    const nextValue = rounded >= 0.999 ? '1' : rounded.toString();
-    if (column.style.zoom !== nextValue) {
-      column.style.zoom = nextValue;
-    }
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', panel.classList.contains('is-collapsed') ? 'false' : 'true');
+
+    const toggle = () => {
+      panel.classList.toggle('is-collapsed');
+      const expanded = !panel.classList.contains('is-collapsed');
+      header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      refreshLayout();
+    };
+
+    header.addEventListener('click', (event) => {
+      if (event.target.closest('a, button, input, select, textarea')) {
+        return;
+      }
+      toggle();
+    });
+
+    header.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggle();
+      }
+    });
   });
 }
 
@@ -126,6 +206,313 @@ function wireViewportRefresh() {
       observer.observe(elements.workspace);
     }
   }
+}
+
+function readElementValue(element) {
+  if (!element) {
+    return null;
+  }
+  if (element.type === 'checkbox') {
+    return element.checked;
+  }
+  if (element.type === 'number' || element.type === 'range') {
+    const parsed = parseFloat(element.value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return element.value;
+}
+
+function clampNumberToElement(element, value) {
+  let normalized = value;
+  const min = parseFloat(element.min);
+  const max = parseFloat(element.max);
+  if (!Number.isNaN(min)) {
+    normalized = Math.max(min, normalized);
+  }
+  if (!Number.isNaN(max)) {
+    normalized = Math.min(max, normalized);
+  }
+  return normalized;
+}
+
+function writeElementValue(element, value) {
+  if (!element) {
+    return;
+  }
+  if (element.type === 'checkbox') {
+    element.checked = Boolean(value);
+    return;
+  }
+  if (element.type === 'number' || element.type === 'range') {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      element.value = clampNumberToElement(element, parsed);
+    }
+    return;
+  }
+  if (value !== null && value !== undefined) {
+    element.value = String(value);
+  }
+}
+
+function captureConfigFromDom() {
+  const config = {};
+  Object.entries(PERSISTED_FIELDS).forEach(([stateKey, elementId]) => {
+    const element = document.getElementById(elementId);
+    if (!element) {
+      return;
+    }
+    config[stateKey] = readElementValue(element);
+  });
+  if (elements.exportFilename) {
+    config.exportFilename = elements.exportFilename.value;
+  }
+  return config;
+}
+
+function parseStoredConfig(raw) {
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function toBase64Url(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function fromBase64Url(value) {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/');
+  const remainder = padded.length % 4;
+  const normalized = remainder === 0 ? padded : padded + '='.repeat(4 - remainder);
+  const binary = atob(normalized);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function encodeConfigSeed(config) {
+  try {
+    const raw = JSON.stringify(config);
+    return `v1.${toBase64Url(raw)}`;
+  } catch {
+    return null;
+  }
+}
+
+function decodeConfigSeed(seed) {
+  if (typeof seed !== 'string' || seed.length === 0) {
+    return null;
+  }
+
+  const parts = seed.split('.', 2);
+  if (parts.length !== 2 || parts[0] !== 'v1') {
+    return null;
+  }
+
+  try {
+    const json = fromBase64Url(parts[1]);
+    return parseStoredConfig(json);
+  } catch {
+    return null;
+  }
+}
+
+function readConfigFromSources() {
+  const params = new URLSearchParams(window.location.search);
+  const fromSeed = decodeConfigSeed(params.get(URL_SEED_KEY));
+  if (fromSeed) {
+    return fromSeed;
+  }
+
+  const fromUrl = parseStoredConfig(params.get(URL_CONFIG_KEY));
+  if (fromUrl) {
+    return fromUrl;
+  }
+  try {
+    return parseStoredConfig(window.localStorage.getItem(STORAGE_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function applyConfigToDom(config, triggerChange = false) {
+  if (!config || typeof config !== 'object') {
+    return;
+  }
+
+  Object.entries(PERSISTED_FIELDS).forEach(([stateKey, elementId]) => {
+    if (!(stateKey in config)) {
+      return;
+    }
+    const element = document.getElementById(elementId);
+    if (!element) {
+      return;
+    }
+    writeElementValue(element, config[stateKey]);
+    const normalizedValue = readElementValue(element);
+    state[stateKey] = normalizedValue;
+    updateOutputForElement(element, normalizedValue);
+  });
+
+  if (typeof config.exportFilename === 'string' && elements.exportFilename) {
+    elements.exportFilename.value = config.exportFilename;
+  }
+
+  if (triggerChange) {
+    onChange();
+  }
+}
+
+async function copyShareLinkToClipboard() {
+  persistConfig();
+  const config = getPersistedConfigFromState();
+  const params = new URLSearchParams(window.location.search);
+  const seed = encodeConfigSeed(config);
+  if (seed) {
+    params.set(URL_SEED_KEY, seed);
+    params.delete(URL_CONFIG_KEY);
+  }
+  const query = params.toString();
+  const shareUrl = `${window.location.origin}${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+  const button = elements.copyShareLink;
+  if (!button) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(shareUrl);
+    const original = button.textContent;
+    button.textContent = 'Seed link copied';
+    setTimeout(() => {
+      button.textContent = original;
+    }, 1200);
+  } catch {
+    window.prompt('Copy share seed link:', shareUrl);
+  }
+}
+
+function applyInitialConfig() {
+  const initialConfig = readConfigFromSources();
+  if (!initialConfig) {
+    return;
+  }
+  applyConfigToDom(initialConfig, false);
+}
+
+function getPersistedConfigFromState() {
+  const config = {};
+  Object.keys(PERSISTED_FIELDS).forEach((stateKey) => {
+    if (stateKey in state) {
+      config[stateKey] = state[stateKey];
+    }
+  });
+  if (elements.exportFilename) {
+    config.exportFilename = elements.exportFilename.value;
+  }
+  return config;
+}
+
+function configsMatch(a, b) {
+  const keys = new Set([...Object.keys(PERSISTED_FIELDS), 'exportFilename']);
+  for (const key of keys) {
+    if (a[key] !== b[key]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function persistConfig() {
+  const config = getPersistedConfigFromState();
+  const params = new URLSearchParams(window.location.search);
+
+  if (configsMatch(config, DEFAULT_CONFIG)) {
+    params.delete(URL_SEED_KEY);
+    params.delete(URL_CONFIG_KEY);
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Ignore storage errors in restricted contexts.
+    }
+  } else {
+    const serialized = JSON.stringify(config);
+    const seed = encodeConfigSeed(config);
+    if (seed) {
+      params.set(URL_SEED_KEY, seed);
+      params.delete(URL_CONFIG_KEY);
+    } else {
+      params.set(URL_CONFIG_KEY, serialized);
+      params.delete(URL_SEED_KEY);
+    }
+    try {
+      window.localStorage.setItem(STORAGE_KEY, serialized);
+    } catch {
+      // Ignore storage errors in restricted contexts.
+    }
+  }
+
+  const query = params.toString();
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+  window.history.replaceState(null, '', nextUrl);
+}
+
+function schedulePersistConfig() {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+  }
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    persistConfig();
+  }, 120);
+}
+
+function getPresetConfig(name) {
+  if (name === 'mausritter') {
+    return {
+      pageOrientation: 'landscape',
+      mapShape: 'hexagon',
+      mapHandedness: 'even',
+      mapWidth: 5,
+      mapHeight: 5,
+      hexSize: 28,
+      hexLineWidth: 0.3,
+      hexLineDash: 'solid',
+      hexLineColor: '#000000',
+      hexLineAlpha: 0.35,
+      coordsShow: true,
+      coordsStyle: 'index',
+      coordsOrigin: 'top',
+      coordsPosition: 'bottom',
+      coordsOffset: 1.5,
+      coordsFont: 'Source Sans 3',
+      coordsSize: 2.5,
+      coordsBold: false,
+      coordsItalic: false,
+      coordsColor: '#222222',
+      coordsAlpha: 0.55,
+      coordsPrefix: '',
+      coordsDelimiter: '-',
+      coordsXType: 'number',
+      coordsYType: 'number',
+      coordsXStart: 1,
+      coordsYStart: 1,
+      coordsXPadding: '',
+      coordsYPadding: '',
+      coordsIndexStart: '0',
+    };
+  }
+
+  return { ...DEFAULT_CONFIG };
 }
 
 function refreshAfterFontsLoad() {
@@ -353,11 +740,11 @@ function onChange() {
   setHidden(elements.coordsY, isIndex);
   setHidden(elements.controlCoordsDelimiter, isIndex);
   setHidden(elements.controlCoordsIndexStart, !(isIndex && state.mapShape === 'hexagon'));
-  setHidden(elements.controlCoordsIndexBase, !(isIndex && state.mapShape === 'hexagon'));
   setHidden(elements.controlCoordsOrigin, state.mapShape === 'hexagon');
   updateIndexStartLabels();
 
   refreshLayout();
+  schedulePersistConfig();
 }
 
 function updateA4Orientation() {
@@ -590,33 +977,8 @@ function drawCoordinates(context) {
       }
 
       const coords = getHexCenter(x, y);
-      let hexString = '';
       const displayY = flipGridY ? mapHeight - 1 - y : y;
-
-      if (state.coordsStyle === 'xy') {
-        hexString = state.coordsPrefix + processXCoord(x) + state.coordsDelimiter + processYCoord(displayY);
-      } else if (state.coordsStyle === 'index') {
-        const baseOffset = Math.max(0, Math.min(1, parseInt(state.coordsIndexBase, 10) || 0));
-        if (state.mapShape === 'square') {
-          const index = displayY * mapWidth + x + baseOffset;
-          hexString = state.coordsPrefix + processIndexCoord(index);
-        } else {
-          const ri = hexagonRankIndex(x, y);
-          let index = ri.index;
-          const rotation = parseInt(state.coordsIndexStart, 10) || 0;
-          if (rotation !== 0 && ri.rank > 0) {
-            const ringStart = 1 + 3 * ri.rank * (ri.rank - 1);
-            const ringSize = 6 * ri.rank;
-            const offset = index - ringStart;
-            let rotatedOffset = (offset - rotation * ri.rank) % ringSize;
-            if (rotatedOffset < 0) {
-              rotatedOffset += ringSize;
-            }
-            index = ringStart + rotatedOffset;
-          }
-          hexString = state.coordsPrefix + processIndexCoord(index + baseOffset);
-        }
-      }
+      const hexString = getHexLabel(x, y, displayY, mapWidth, mapHeight);
 
       context.save();
       context.translate(coords.x, coords.y);
@@ -626,6 +988,37 @@ function drawCoordinates(context) {
   }
 
   context.restore();
+}
+
+function getHexLabel(x, y, displayY = y, mapWidth = getMapWidth()) {
+  if (state.coordsStyle === 'xy') {
+    return state.coordsPrefix + processXCoord(x) + state.coordsDelimiter + processYCoord(displayY);
+  }
+
+  if (state.coordsStyle === 'index') {
+    const startAt = Number.isFinite(state.coordsXStart) ? state.coordsXStart : 1;
+    if (state.mapShape === 'square') {
+      const index = displayY * mapWidth + x + startAt;
+      return state.coordsPrefix + processIndexCoord(index);
+    }
+
+    const ri = hexagonRankIndex(x, y);
+    let index = ri.index;
+    const rotation = parseInt(state.coordsIndexStart, 10) || 0;
+    if (rotation !== 0 && ri.rank > 0) {
+      const ringStart = 1 + 3 * ri.rank * (ri.rank - 1);
+      const ringSize = 6 * ri.rank;
+      const offset = index - ringStart;
+      let rotatedOffset = (offset - rotation * ri.rank) % ringSize;
+      if (rotatedOffset < 0) {
+        rotatedOffset += ringSize;
+      }
+      index = ringStart + rotatedOffset;
+    }
+    return state.coordsPrefix + processIndexCoord(index + startAt);
+  }
+
+  return '';
 }
 
 function getLineDash() {
@@ -1086,4 +1479,17 @@ function buildFilename(extension) {
   const raw = elements.exportFilename.value.trim() || 'hexmap.png';
   const base = raw.replace(/\.[^/.]+$/, '');
   return `${base}.${extension}`;
+}
+
+if (typeof window !== 'undefined') {
+  window.__hexgridDebug = {
+    state,
+    elements,
+    getMapWidth,
+    getMapHeight,
+    hexagonRankIndex,
+    getHexLabel,
+    renderExportCanvas,
+    runLayoutTests,
+  };
 }

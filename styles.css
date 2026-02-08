@@ -35,18 +35,19 @@ body {
 #app {
   height: 100vh;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
 }
 
 .topbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  padding: 6px 12px;
+  padding: 3px 10px;
   border-bottom: 1px solid rgba(111, 99, 80, 0.25);
   background: rgba(255, 255, 255, 0.32);
   backdrop-filter: blur(6px);
-  gap: 12px;
+  gap: 10px;
 }
 
 .brand {
@@ -65,7 +66,7 @@ body {
 .topbar h1 {
   font-family: "Averia Serif Libre", "Times New Roman", serif;
   margin: 0;
-  font-size: 1.75rem;
+  font-size: 1.42rem;
   letter-spacing: 0.02em;
   white-space: nowrap;
   overflow: hidden;
@@ -117,15 +118,15 @@ body {
 .header-export {
   justify-self: center;
   display: grid;
-  gap: 6px;
-  padding: 8px 12px;
+  gap: 4px;
+  padding: 5px 10px;
   background: rgba(251, 246, 238, 0.9);
   border: 1px solid rgba(112, 98, 79, 0.25);
   border-radius: 12px;
   box-shadow: 0 10px 20px rgba(33, 24, 15, 0.14);
   min-width: 0;
   max-width: 100%;
-  width: 420px;
+  width: 400px;
 }
 
 .header-export .export-field {
@@ -142,14 +143,14 @@ body {
 }
 
 .header-export .export-field input {
-  height: 32px;
-  font-size: 0.9rem;
+  height: 28px;
+  font-size: 0.86rem;
 }
 
 .header-export .btn {
-  height: 32px;
-  font-size: 0.85rem;
-  padding: 0 10px;
+  height: 28px;
+  font-size: 0.8rem;
+  padding: 0 8px;
   min-width: 0;
 }
 
@@ -165,6 +166,7 @@ body {
   align-items: stretch;
   padding: 4px 4px 6px;
   height: 100%;
+  min-height: 0;
 }
 
 .workspace-inner {
@@ -172,6 +174,7 @@ body {
   grid-template-columns: var(--panel-width) minmax(0, 1fr) var(--panel-width);
   gap: 0;
   height: 100%;
+  min-height: 0;
   width: 100%;
 }
 
@@ -180,11 +183,31 @@ body {
   flex-direction: column;
   gap: 10px;
   height: 100%;
-  overflow: hidden;
+  min-height: 0;
+  overflow-y: scroll;
+  overflow-x: hidden;
   width: var(--panel-width);
+  padding-right: 4px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(90, 74, 53, 0.45) transparent;
+}
+
+.controls::-webkit-scrollbar {
+  width: 8px;
+}
+
+.controls::-webkit-scrollbar-thumb {
+  background: rgba(90, 74, 53, 0.45);
+  border-radius: 999px;
+}
+
+.controls::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .panel {
+  flex: 0 0 auto;
   background: var(--panel);
   border: 1px solid rgba(112, 98, 79, 0.2);
   border-radius: var(--radius);
@@ -195,9 +218,30 @@ body {
 .panel-header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   margin-bottom: 6px;
+  position: relative;
+  padding-right: 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.panel-header::after {
+  content: "▾";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-52%);
+  font-size: 0.82rem;
+  color: var(--muted);
+  transition: transform 0.18s ease;
+}
+
+.panel-header:focus-visible {
+  outline: 2px solid rgba(111, 123, 62, 0.55);
+  outline-offset: 2px;
+  border-radius: 8px;
 }
 
 .panel-header h2 {
@@ -210,6 +254,18 @@ body {
   margin: 0;
   font-size: 0.72rem;
   color: var(--muted);
+}
+
+.panel.is-collapsed > :not(.panel-header) {
+  display: none;
+}
+
+.panel.is-collapsed .panel-header {
+  margin-bottom: 0;
+}
+
+.panel.is-collapsed .panel-header::after {
+  transform: translateY(-52%) rotate(-90deg);
 }
 
 .control-grid {
@@ -263,6 +319,15 @@ body {
 
 .control-row.slider-row .stepper-btn[data-stepper="up"] {
   grid-area: right;
+}
+
+.control-row.preset-row {
+  gap: 6px;
+}
+
+.control-row.preset-row select {
+  flex: 1;
+  min-width: 0;
 }
 
 .stepper-btn {
@@ -472,6 +537,13 @@ fieldset:disabled {
   cursor: pointer;
 }
 
+.btn.btn-compact {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 0.82rem;
+  border-radius: 10px;
+}
+
 .btn.primary {
   background: linear-gradient(180deg, #7b8742, #5c672f);
   color: #f5f1e8;
@@ -491,11 +563,13 @@ fieldset:disabled {
   justify-content: flex-start;
   gap: 0;
   height: 100%;
+  min-height: 0;
 }
 
 .a4-wrapper {
   width: 100%;
   height: 100%;
+  min-height: 0;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -542,6 +616,11 @@ fieldset:disabled {
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 6px;
   margin-top: 0;
+}
+
+.export-share {
+  display: flex;
+  justify-content: center;
 }
 
 .layout-overflow {

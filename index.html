@@ -25,6 +25,9 @@
           <button id="save-png-alpha" class="btn" type="button">PNG Transparent</button>
           <button id="save-pdf" class="btn" type="button">PDF White</button>
         </div>
+        <div class="export-share">
+          <button id="copy-share-link" class="btn" type="button">Copy Share Link</button>
+        </div>
       </div>
     </header>
 
@@ -43,6 +46,16 @@
                   <option value="landscape" selected>Landscape</option>
                   <option value="portrait">Portrait</option>
                 </select>
+              </div>
+              <div class="control span-2">
+                <label for="preset-select">Preset</label>
+                <div class="control-row preset-row">
+                  <select id="preset-select">
+                    <option value="default" selected>Default</option>
+                    <option value="mausritter">Mausritter</option>
+                  </select>
+                  <button id="apply-preset" type="button" class="btn btn-compact">Apply</button>
+                </div>
               </div>
             </div>
           </section>
@@ -192,13 +205,6 @@
               <select id="coords-origin">
                 <option value="top" selected>Top-left</option>
                 <option value="bottom">Bottom-left</option>
-              </select>
-            </div>
-            <div class="control" id="control-coords-index-base">
-              <label for="coords-index-base">Center index</label>
-              <select id="coords-index-base">
-                <option value="0" selected>0</option>
-                <option value="1">1</option>
               </select>
             </div>
             <div class="control span-2" id="control-coords-index-start">
